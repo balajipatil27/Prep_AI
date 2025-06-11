@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>PrepAI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #e9f0e7 0%, #f7faf6 100%);
+        color: #222831;
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Navbar */
+      .navbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 2.5rem;
+        background-color: #1e1e1e;
+        color: white;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        transition: background-color 0.3s ease;
+      }
+      .navbar .logo {
+        font-size: 1.6rem;
+        font-weight: 700;
+        letter-spacing: 1.4px;
+        user-select: none;
+        color: #99bc85;
+        transition: color 0.3s ease;
+        cursor: default;
+      }
+      .navbar .logo:hover {
+        color: #a8c48e;
+      }
+      .nav-links {
+        list-style: none;
+        display: flex;
+        gap: 1.8rem;
+        margin: 0;
+        padding: 0;
+      }
+      .nav-links a {
+        text-decoration: none;
+        color: white;
+        font-weight: 600;
+        font-size: 1.05rem;
+        padding: 0.3rem 0.7rem;
+        border-radius: 6px;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      .nav-links a:hover,
+      .nav-links a:focus {
+        background-color: rgba(153, 188, 133, 0.18);
+        color: #99bc85;
+        outline: none;
+      }
+
+      /* Container and card */
+      .container {
+        max-width: 650px;
+        background: rgba(255, 255, 255, 0.75);
+        backdrop-filter: blur(12px);
+        border-radius: 18px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05),
+          0 12px 30px rgba(0, 0, 0, 0.1);
+        padding: 3rem 3.5rem;
+        margin: 4rem auto 5rem;
+        text-align: center;
+        transition: box-shadow 0.3s ease;
+      }
+      .container:hover {
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07),
+          0 16px 40px rgba(0, 0, 0, 0.15);
+      }
+
+      /* Heading */
+      h1 {
+        font-weight: 800;
+        color: #222831;
+        font-size: 2.6rem;
+        margin-bottom: 2rem;
+        letter-spacing: 1.2px;
+        user-select: none;
+      }
+      .subtitle {
+        color: #556b4e;
+        font-size: 1.15rem;
+        margin-bottom: 2.5rem;
+        line-height: 1.6;
+      }
+
+      /* Form label */
+      .form-label {
+        font-weight: 600;
+        color: #556b4e;
+        margin-bottom: 0.75rem;
+        letter-spacing: 0.03em;
+        display: block;
+        text-align: left;
+      }
+
+      /* File input */
+      .form-control-file {
+        border-radius: 0.7rem;
+        border: 1.8px solid #c9d6c8;
+        padding: 1.2rem;
+        font-size: 1.1rem;
+        background: #f9fdf8;
+        color: #222831;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        box-shadow: inset 0 1px 3px rgb(0 0 0 / 0.05);
+        cursor: pointer;
+        width: 100%;
+        display: block;
+      }
+      .form-control-file:hover {
+        border-color: #99bc85;
+        box-shadow: 0 0 8px #b4d2a7;
+        outline: none;
+        background: #f7faf6;
+      }
+
+      /* Button */
+      .btn-primary {
+        background-color: #7eb86e;
+        color: #fff;
+        border: none;
+        font-weight: 700;
+        font-size: 1.1rem;
+        border-radius: 0.8rem;
+        padding: 0.7rem 2.2rem;
+        box-shadow: 0 6px 18px rgb(126 184 110 / 0.5);
+        transition: background-color 0.3s, box-shadow 0.3s, transform 0.2s;
+        cursor: pointer;
+        user-select: none;
+        width: 100%;
+        display: block;
+        margin-top: 1.5rem;
+      }
+      .btn-primary:hover,
+      .btn-primary:focus {
+        background-color: #6aa55a;
+        box-shadow: 0 8px 24px rgba(106, 165, 90, 0.7);
+        transform: translateY(-3px);
+        outline: none;
+      }
+
+      /* Alert */
+      .alert {
+        margin-top: 2rem;
+        border-radius: 0.7rem;
+        font-size: 1.1rem;
+        padding: 1rem 1.5rem;
+        background: #e6f0d9;
+        color: #556b4e;
+        box-shadow: inset 0 1px 3px rgb(0 0 0 / 0.05);
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .container {
+          padding: 2rem 2rem;
+          max-width: 95vw;
+        }
+        h1 {
+          font-size: 2rem;
+          margin-bottom: 1.5rem;
+        }
+        .btn-primary {
+          padding: 0.75rem 0;
+          font-size: 1rem;
+        }
+        .navbar {
+          padding: 1rem 1.5rem;
+        }
+        .nav-links {
+          gap: 1rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="navbar" role="navigation" aria-label="Primary navigation">
+      <div class="logo">PrepAI</div>
+      <ul class="nav-links">
+        <li><a href="/">Home</a></li>
+        <li><a href="/pre">Preprocess</a></li>
+        <li><a href="/eda">PlayML</a></li>
+        <li><a href="/dash">Dashboard</a></li>
+        <li><a href="/aboutus">About Us</a></li>
+      </ul>
+    </nav>
+
+    <main
+      class="container"
+      role="main"
+      aria-label="Upload and generate dashboard form"
+    >
+      <h1>DataVista 📊</h1>
+      <p class="subtitle">
+        Transform your raw CSV or Excel data into a beautiful and insightful
+        dashboard with just a few clicks. Visualize trends, patterns, and key
+        metrics effortlessly.
+      </p>
+      <form action="/uploaddash" method="post" enctype="multipart/form-data">
+        <label for="file" class="form-label"
+          >Drag & Drop or Click to Select Your Data File (.csv, .xlsx):</label
+        >
+        <input
+          type="file"
+          class="form-control-file"
+          id="file"
+          name="file"
+          accept=".csv, .xlsx"
+          required
+          aria-required="true"
+          aria-label="Upload CSV or Excel file"
+        />
+        <button type="submit" class="btn btn-primary">
+          Generate Your Dashboard
+        </button>
+      </form>
+      {% if error %}
+      <div class="alert" role="alert">{{ error }}</div>
+      {% endif %}
+    </main>
+  </body>
+</html>

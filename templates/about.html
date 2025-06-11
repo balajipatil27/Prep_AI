@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PrepAI</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      /* Body and background */
+      body {
+        background: linear-gradient(135deg, #e9f0e7 0%, #f7faf6 100%);
+        color: #222831;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Navbar */
+      .navbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 2.5rem;
+        background-color: #1e1e1e;
+        color: white;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        transition: background-color 0.3s ease;
+      }
+      .navbar .logo {
+        font-size: 1.6rem;
+        font-weight: 700;
+        letter-spacing: 1.2px;
+        user-select: none;
+        color: #99bc85;
+        transition: color 0.3s ease;
+      }
+      .navbar .logo:hover {
+        color: #a8c48e;
+      }
+      .nav-links {
+        list-style: none;
+        display: flex;
+        gap: 1.8rem;
+        margin: 0;
+        padding: 0;
+      }
+      .nav-links a {
+        text-decoration: none;
+        color: white;
+        font-weight: 500;
+        font-size: 1.05rem;
+        padding: 0.3rem 0.6rem;
+        border-radius: 5px;
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      .nav-links a:hover,
+      .nav-links a:focus {
+        background-color: rgba(153, 188, 133, 0.18);
+        color: #99bc85;
+        outline: none;
+      }
+
+      /* Container and main card */
+      .container {
+        max-width: 95vw;
+        margin: 3rem auto 4rem;
+        padding: 0 1.5rem;
+        margin-bottom: 5px;
+      }
+      .main-card {
+        background: #111111;
+        border-radius: 18px;
+        box-shadow: 0 0 10px #000;
+        padding: 2rem 3rem 2rem 3rem;
+        max-width: 1300px;
+        margin: 0 auto;
+        overflow-wrap: break-word;
+        height: calc(100vh - 160px);
+        max-height: 800px;
+      }
+
+      /* Headings */
+      h2 {
+        color: #99bc85;
+        font-weight: 700;
+        font-size: 2.4rem;
+        margin-bottom: 1.8rem;
+        letter-spacing: 1px;
+        user-select: none;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+      }
+
+      /* Paragraphs and lists */
+      p,
+      li {
+        color: #f8f9fa;
+        font-size: 1.08rem;
+        line-height: 1.6;
+      }
+      ul {
+        margin-left: 1.2rem;
+        margin-bottom: 1.5rem;
+        padding-left: 1.2rem;
+      }
+      strong {
+        color: #99bc85;
+        font-weight: 700;
+      }
+      .main-card em {
+        color: #c2e199;
+        font-size: 1.07rem;
+        letter-spacing: 0.3px;
+      }
+
+      /* Links inside content */
+      .main-card a {
+        color: #99bc85;
+        text-decoration: underline;
+        transition: color 0.3s ease;
+      }
+      .main-card a:hover,
+      .main-card a:focus {
+        color: #a8d08d;
+        outline: none;
+      }
+
+      /* Responsive typography */
+      @media (max-width: 1200px) {
+        .main-card {
+          max-width: 90vw;
+          padding: 2rem 2rem 2rem 2rem;
+        }
+        h2 {
+          font-size: 2rem;
+        }
+      }
+      @media (max-width: 768px) {
+        .main-card {
+          max-width: 95vw;
+          padding: 1.5rem 1.2rem 1.5rem 1.2rem;
+        }
+        h2 {
+          font-size: 1.6rem;
+        }
+        p,
+        li {
+          font-size: 1rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav class="navbar" role="navigation" aria-label="Primary Navigation">
+      <div class="logo" tabindex="0">PrepAI</div>
+      <ul class="nav-links">
+        <li><a href="/" tabindex="0">Home</a></li>
+        <li><a href="/pre" tabindex="0">Preprocess</a></li>
+        <li><a href="/eda" tabindex="0">PlayML</a></li>
+        <li><a href="/dash">Dashboard</a></li>
+        <li><a href="/aboutus" tabindex="0">About Us</a></li>
+      </ul>
+    </nav>
+
+    <div class="container">
+      <div class="main-card">
+        <h2>About PrepAI</h2>
+        <p>
+          <strong>PrepAI</strong> is a modern, interactive platform built to
+          simplify and empower learning in the field of Data Science and Machine
+          Learning.
+        </p>
+        <p>
+          Our mission is to bring together all the essential tools and learning
+          resources in one intuitive and engaging platform. Whether you're a
+          student, a beginner, or someone looking to sharpen your skills, PrepAI
+          is here to help.
+        </p>
+        <p class="mb-2">✨ <strong>Key Features:</strong></p>
+        <ul>
+          <li>Preprocess the dataset with a few clicks</li>
+          <li>Download the cleaned dataset for EDA and machine learning</li>
+          <li>Upload and analyze datasets easily</li>
+          <li>Apply ML algorithms and visualize results</li>
+          <li>From spreadsheets to stunning dashboards easily</li>
+          <li>
+            Visualize trends, discover patterns, and unlock key insights in a
+            click.
+          </li>
+        </ul>
+        <p>
+          The project is designed with a sleek, minimalist UI for a focused,
+          modern experience. We're constantly improving and adding new features
+          to make PrepAI your go-to tool for hands-on data learning.
+        </p>
+        <p class="mt-4"><em>Happy Learning! 🚀</em></p>
+      </div>
+    </div>
+  </body>
+</html>
