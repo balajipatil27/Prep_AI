@@ -26,7 +26,6 @@ It is an intelligent web-based tool designed to automate and simplify the prepro
 * 💡 Clean UI built with Bootstrap
 * 🔄 Realtime feedback on preprocessing steps
 
---
 
 ### 📊 2. ML Visualizer
 A comprehensive machine learning visualizer and educational platform. As a learner, I found myself constantly scrolling through different sites for ML tools. ML Visualizer consolidates everything in one place, saving time and making it easier for you to visualize, learn, and experiment with machine learning algorithms.
