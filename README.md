@@ -82,7 +82,7 @@ PrepAI accepts datasets in multiple formats:
 
 ### 🔹 1. Clone the Repository
 
-git clone https://github.com/yourusername/prepai.git
+git clone https://github.com/balajipatil27/prepai.git
 cd prepai
 
 ### 🔹 2. Create Virtual Environment
