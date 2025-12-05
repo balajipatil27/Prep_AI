@@ -11,3 +11,5 @@ numpy
 fpdf
 nltk
 shap
+
+gunicorn
