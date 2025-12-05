@@ -1,68 +1,38 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory, url_for
+from flask import Flask, request, jsonify, render_template, send_from_directory, url_for, flash, session, send_file, redirect
 import os
 import uuid
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
-from preprocessing import preprocess_data
-from model_runner import run_model
-from eda_report import generate_eda_summary
-from utils import (
-    generate_confusion_matrix_plot,
-    generate_correlation_plot,
-    generate_feature_importance_plot,
-    generate_shap_plot
-)
-from fpdf import FPDF
-import nltk
-from nltk.corpus import opinion_lexicon
-from nltk.tokenize import word_tokenize
-from dashboard import get_dashboard_data
-import io
-import base64
-
-import matplotlib
-matplotlib.use('Agg')
-
 import numpy as np
 import seaborn as sns
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from flask import  request, send_file, redirect,  flash, session
 from sklearn.preprocessing import LabelEncoder
 
-
-
+# Essential Flask setup remains
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 PLOT_FOLDER = 'static/plots'
 REPORT_FOLDER = 'static/reports'
 app.secret_key = 'your_secret_key'
 
-# app.config['UPLOAD_FOLDERR'] = 'uploads'
-# app.config['ALLOWED_EXTENSIONSS'] = {'csv', 'xlsx'}
-
 PROCESSED_FOLDER = 'processed'
 STATIC_FOLDER = 'static'
 ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
-
-
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(PLOT_FOLDER, exist_ok=True)
 os.makedirs(REPORT_FOLDER, exist_ok=True)
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 os.makedirs(STATIC_FOLDER, exist_ok=True)
 
 data_cache = {} 
 
-
 # Home Page
 @app.route('/eda')
 def eda():
     return render_template('PlayML.html')
-
 
 @app.route('/')
 def index():
@@ -80,14 +50,8 @@ def aboutus():
 def dash():
     return render_template('dashboard.html')
 
-
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-# def allowed_file(filename):
-#     return '.' in filename and \
-#            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONSS']
 
 def generate_heatmap(df):
     corr = df.select_dtypes(include=[np.number]).corr()
@@ -217,7 +181,6 @@ def preprocess_dataset(filepath, filename, strategy_dict):
 
     return df.head().to_html(classes='table table-striped'), report, cleaned_path, report_path, heatmap_path
 
-
 @app.route('/upload_preprocess', methods=['POST'])
 def upload_preprocess():
     if 'file' not in request.files:
@@ -242,7 +205,6 @@ def upload_preprocess():
 
     flash("Invalid file format.")
     return redirect(url_for('pre'))
-
 
 @app.route('/preprocess', methods=['POST'])
 def preprocess():
@@ -272,9 +234,20 @@ def download_file(filename):
     path = os.path.join(PROCESSED_FOLDER, filename)
     return send_file(path, as_attachment=True)
 
-
-# Upload dataset and return EDA + Correlation plot
 def suggest_algorithms(df, target_col):
+    # Lazy import for optional dependencies
+    try:
+        import xgboost
+        xgboost_available = True
+    except ImportError:
+        xgboost_available = False
+    
+    try:
+        import lightgbm
+        lightgbm_available = True
+    except ImportError:
+        lightgbm_available = False
+
     target_dtype = df[target_col].dtype
     unique_values = df[target_col].nunique()
     feature_types = df.drop(columns=[target_col]).dtypes
@@ -295,16 +268,12 @@ def suggest_algorithms(df, target_col):
             {"value": "decision_tree", "label": "Decision Tree"},
             {"value": "random_forest", "label": "Random Forest"},
         ]
-        try:
-            import xgboost  # noqa
+        
+        if xgboost_available:
             algorithms.append({"value": "xgboost", "label": "XGBoost"})
-        except ImportError:
-            pass
-        try:
-            import lightgbm  # noqa
+        
+        if lightgbm_available:
             algorithms.append({"value": "lightgbm", "label": "LightGBM"})
-        except ImportError:
-            pass
 
         if not has_numeric_features:
             algorithms = [a for a in algorithms if a["value"] not in ("knn", "svm")]
@@ -320,16 +289,12 @@ def suggest_algorithms(df, target_col):
                 {"value": "naive_bayes", "label": "Naive Bayes"},
                 {"value": "knn", "label": "KNN"},
             ]
-            try:
-                import xgboost  # noqa
+            
+            if xgboost_available:
                 algorithms.append({"value": "xgboost", "label": "XGBoost"})
-            except ImportError:
-                pass
-            try:
-                import lightgbm  # noqa
+            
+            if lightgbm_available:
                 algorithms.append({"value": "lightgbm", "label": "LightGBM"})
-            except ImportError:
-                pass
 
             if not has_categorical_features:
                 algorithms = [a for a in algorithms if a["value"] != "naive_bayes"]
@@ -340,16 +305,12 @@ def suggest_algorithms(df, target_col):
                 {"value": "svm", "label": "SVM"},
                 {"value": "knn", "label": "KNN"},
             ]
-            try:
-                import xgboost  
+            
+            if xgboost_available:
                 algorithms.append({"value": "xgboost", "label": "XGBoost"})
-            except ImportError:
-                pass
-            try:
-                import lightgbm  
+            
+            if lightgbm_available:
                 algorithms.append({"value": "lightgbm", "label": "LightGBM"})
-            except ImportError:
-                pass
 
     else:
         algorithms = [
@@ -361,6 +322,10 @@ def suggest_algorithms(df, target_col):
 
 @app.route('/upload', methods=['POST'])
 def upload():
+    # Lazy import for EDA module
+    from eda_report import generate_eda_summary
+    from utils import generate_correlation_plot
+    
     file = request.files.get('dataset')
     if not file:
         return jsonify({"error": "No file uploaded"}), 400
@@ -435,6 +400,15 @@ def suggest_algorithms_route():
 
 @app.route('/train', methods=['POST'])
 def train():
+    # Lazy import ML modules
+    from preprocessing import preprocess_data
+    from model_runner import run_model
+    from utils import (
+        generate_confusion_matrix_plot,
+        generate_feature_importance_plot,
+        generate_shap_plot
+    )
+    
     uid = request.form.get('uid')
     target = request.form.get('target')
     algorithm = request.form.get('algorithm')
@@ -490,9 +464,11 @@ def serve_plot(filename):
     return send_from_directory(PLOT_FOLDER, filename)
 
 #dashboard
-
 @app.route('/uploaddash', methods=['POST'])
 def upload_file():
+    # Lazy import dashboard module
+    from dashboard import get_dashboard_data
+    
     if 'file' not in request.files:
         return redirect(request.url)
     file = request.files['file']
@@ -523,7 +499,15 @@ def upload_file():
                 os.remove(filepath)
     else:
         return render_template('dashboard.html', error="Invalid file type. Please upload a CSV or XLSX file.")
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
-
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    
+    # For production, use these settings
+    if not debug_mode:
+        # Production settings
+        app.config['TEMPLATES_AUTO_RELOAD'] = False
+        app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 300
+        
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
