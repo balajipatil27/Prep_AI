@@ -2,55 +2,59 @@ from flask import Flask, request, jsonify, render_template, send_from_directory,
 import os
 import uuid
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
 from preprocessing import preprocess_data
 from model_runner import run_model
 from utils import generate_confusion_matrix_plot
 from eda_report import generate_eda_summary, generate_correlation_plot
-from fpdf import FPDF
-import nltk
-from nltk.corpus import opinion_lexicon
-from nltk.tokenize import word_tokenize
 from dashboard import get_dashboard_data
-import io
-import base64
 import time
-from datetime import datetime, timedelta
-import shutil
-
-import matplotlib
-matplotlib.use('Agg')
-
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from flask import request, send_file, redirect, flash, session
 from sklearn.preprocessing import LabelEncoder
 
-app = Flask(__name__, 
-            template_folder='../frontend/templates',
-            static_folder='../static')
-UPLOAD_FOLDER = 'uploads'
-PLOT_FOLDER = '../static/plots'
+# Get the absolute path to the current directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-app.secret_key = 'your_secret_key'
+# Define template and static folders relative to BASE_DIR
+TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
+STATIC_DIR = os.path.join(BASE_DIR, 'static')
+
+# Check if directories exist, create them if they don't
+os.makedirs(TEMPLATE_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
+
+print(f"Template directory: {TEMPLATE_DIR}")
+print(f"Static directory: {STATIC_DIR}")
+print(f"Template directory exists: {os.path.exists(TEMPLATE_DIR)}")
+print(f"Static directory exists: {os.path.exists(STATIC_DIR)}")
+
+# List files in template directory (for debugging)
+if os.path.exists(TEMPLATE_DIR):
+    print(f"Files in template directory: {os.listdir(TEMPLATE_DIR)}")
+
+app = Flask(__name__, 
+            template_folder=TEMPLATE_DIR,
+            static_folder=STATIC_DIR)
+
+UPLOAD_FOLDER = 'uploads'
+PLOT_FOLDER = os.path.join(STATIC_DIR, 'plots')
+
+app.secret_key = 'your_secret_key_here_change_me'
 
 PROCESSED_FOLDER = 'processed'
-STATIC_FOLDER = '../static'
 ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(PLOT_FOLDER, exist_ok=True)
 os.makedirs(PROCESSED_FOLDER, exist_ok=True)
-os.makedirs(STATIC_FOLDER, exist_ok=True)
 
 data_cache = {} 
 file_access_times = {}  # Track when files were last accessed
 MAX_CACHE_AGE_HOURS = 1  # Clean up files older than 1 hour
 MAX_CACHE_SIZE = 10      # Maximum number of files to keep in cache
-first_request = False    # Flag to track first request
 
 # ==================== CLEANUP FUNCTIONS ====================
 
@@ -115,73 +119,29 @@ def cleanup_specific_files(file_list):
             except Exception as e:
                 print(f"Error removing {filename}: {e}")
 
-def cleanup_processed_files(filename_prefix=None):
-    """Remove processed files, optionally filtered by prefix"""
-    for filename in os.listdir(PROCESSED_FOLDER):
-        if filename_prefix and not filename.startswith(filename_prefix):
-            continue
-        file_path = os.path.join(PROCESSED_FOLDER, filename)
-        if os.path.isfile(file_path):
-            try:
-                os.remove(file_path)
-                print(f"Cleaned up processed file: {filename}")
-            except Exception as e:
-                print(f"Error removing {filename}: {e}")
-
-# ==================== MODIFIED ROUTES WITH CLEANUP ====================
-
-@app.before_request
-def before_request_handler():
-    """Run before each request to handle startup cleanup"""
-    global first_request
-    if not first_request:
-        # Perform startup cleanup on first request
-        print("Performing startup cleanup...")
-        cleanup_old_files()
-        first_request = True
-
-# Home Page Routes
-@app.route('/eda')
-def eda():
-    # Run cleanup on less frequent pages
-    cleanup_old_files()
-    return render_template('eda.html')
-
-@app.route('/')
-def index():
-    # Run cleanup on home page
-    cleanup_old_files()
-    return render_template('index.html')
-
-@app.route('/pre')
-def pre():
-    # Clean up before showing preprocessing page
-    cleanup_old_files()
-    return render_template('pre.html')
-
-@app.route('/aboutus')
-def aboutus():
-    cleanup_old_files()
-    return render_template('about.html')
-
-@app.route('/dash')
-def dash():
-    cleanup_old_files()
-    return render_template('dashboardind.html')
+# ==================== HELPER FUNCTIONS ====================
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def generate_heatmap(df):
-    corr = df.select_dtypes(include=[np.number]).corr()
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(corr, annot=True, fmt=".2f", cmap='coolwarm')
-    heatmap_path = os.path.join(STATIC_FOLDER, 'correlation_heatmap.png')
-    plt.title("Correlation Heatmap")
-    plt.tight_layout()
-    plt.savefig(heatmap_path)
-    plt.close()
-    return heatmap_path
+    try:
+        numeric_df = df.select_dtypes(include=[np.number])
+        if numeric_df.shape[1] < 2:
+            return None
+            
+        corr = numeric_df.corr()
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(corr, annot=True, fmt=".2f", cmap='coolwarm')
+        heatmap_path = os.path.join(STATIC_DIR, 'correlation_heatmap.png')
+        plt.title("Correlation Heatmap")
+        plt.tight_layout()
+        plt.savefig(heatmap_path)
+        plt.close()
+        return heatmap_path
+    except Exception as e:
+        print(f"Error generating heatmap: {e}")
+        return None
 
 def detect_and_convert_types(df, report):
     for col in df.select_dtypes(include='object').columns:
@@ -243,9 +203,13 @@ def encode_categorical(df, strategy_dict, report):
 def preprocess_dataset(filepath, filename, strategy_dict):
     report = []
     ext = filename.rsplit('.', 1)[1].lower()
-    df = pd.read_excel(filepath) if ext == 'xlsx' else pd.read_csv(filepath)
-
-    report.append(f"✔️ Loaded dataset with shape {df.shape}.")
+    
+    try:
+        df = pd.read_excel(filepath) if ext == 'xlsx' else pd.read_csv(filepath)
+        report.append(f"✔️ Loaded dataset with shape {df.shape}.")
+    except Exception as e:
+        report.append(f"❌ Error loading file: {e}")
+        return "", report, "", "", ""
 
     df = detect_and_convert_types(df, report)
     df = extract_time_features(df, report)
@@ -286,22 +250,62 @@ def preprocess_dataset(filepath, filename, strategy_dict):
     report.append(f"✅ Final dataset shape: {df.shape}")
 
     heatmap_path = generate_heatmap(df)
-    report.append("📊 Correlation heatmap generated.")
+    if heatmap_path:
+        report.append("📊 Correlation heatmap generated.")
+    else:
+        report.append("ℹ️ Could not generate correlation heatmap (not enough numeric columns).")
 
     cleaned_path = os.path.join(PROCESSED_FOLDER, 'cleaned_' + filename)
-    if ext == 'xlsx':
-        df.to_excel(cleaned_path, index=False)
-    else:
-        df.to_csv(cleaned_path, index=False)
+    try:
+        if ext == 'xlsx':
+            df.to_excel(cleaned_path, index=False)
+        else:
+            df.to_csv(cleaned_path, index=False)
+    except Exception as e:
+        report.append(f"❌ Error saving cleaned file: {e}")
 
     report_path = os.path.join(PROCESSED_FOLDER, 'preprocessing_log.txt')
-    with open(report_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(report))
+    try:
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(report))
+    except Exception as e:
+        report.append(f"❌ Error saving report: {e}")
 
     # Schedule cleanup of original uploaded file
     cleanup_specific_files([filename])
 
-    return df.head().to_html(classes='table table-striped'), report, cleaned_path, report_path, heatmap_path
+    preview_html = df.head().to_html(classes='table table-striped') if not df.empty else "<p>No data to display</p>"
+    return preview_html, report, cleaned_path, report_path, heatmap_path
+
+# ==================== ROUTES ====================
+
+@app.route('/')
+def index():
+    cleanup_old_files()
+    try:
+        return render_template('index.html')
+    except Exception as e:
+        return f"Error loading template: {e}<br>Template directory: {TEMPLATE_DIR}<br>Files in directory: {os.listdir(TEMPLATE_DIR) if os.path.exists(TEMPLATE_DIR) else 'Directory does not exist'}"
+
+@app.route('/eda')
+def eda():
+    cleanup_old_files()
+    return render_template('eda.html')
+
+@app.route('/pre')
+def pre():
+    cleanup_old_files()
+    return render_template('pre.html')
+
+@app.route('/aboutus')
+def aboutus():
+    cleanup_old_files()
+    return render_template('about.html')
+
+@app.route('/dash')
+def dash():
+    cleanup_old_files()
+    return render_template('dashboardind.html')
 
 @app.route('/upload_preprocess', methods=['POST'])
 def upload_preprocess():
@@ -318,14 +322,21 @@ def upload_preprocess():
         filepath = os.path.join(UPLOAD_FOLDER, file.filename)
         file.save(filepath)
         ext = file.filename.rsplit('.', 1)[1].lower()
-        df = pd.read_excel(filepath) if ext == 'xlsx' else pd.read_csv(filepath)
-        categorical_columns = df.select_dtypes(include='object').columns.tolist()
+        
+        try:
+            df = pd.read_excel(filepath) if ext == 'xlsx' else pd.read_csv(filepath)
+            categorical_columns = df.select_dtypes(include='object').columns.tolist()
+            session['filename'] = file.filename
+            column_types = {col: str(dtype) for col, dtype in df.dtypes.items()}
+            return render_template('encoding_options.html', 
+                                 categorical_columns=categorical_columns, 
+                                 column_types=column_types, 
+                                 filename=file.filename)
+        except Exception as e:
+            flash(f"Error reading file: {e}")
+            return redirect(url_for('pre'))
 
-        session['filename'] = file.filename
-        column_types = {col: str(dtype) for col, dtype in df.dtypes.items()}
-        return render_template('encoding_options.html', categorical_columns=categorical_columns, column_types=column_types, filename=file.filename)
-
-    flash("Invalid file format.")
+    flash("Invalid file format. Please upload CSV or Excel files only.")
     return redirect(url_for('pre'))
 
 @app.route('/preprocess', methods=['POST'])
@@ -336,10 +347,18 @@ def preprocess():
         return redirect(url_for('pre'))
 
     filepath = os.path.join(UPLOAD_FOLDER, filename)
-    ext = filename.rsplit('.', 1)[1].lower()
-    df = pd.read_excel(filepath) if ext == 'xlsx' else pd.read_csv(filepath)
-    categorical_columns = df.select_dtypes(include='object').columns.tolist()
+    if not os.path.exists(filepath):
+        flash("Uploaded file not found.")
+        return redirect(url_for('pre'))
 
+    ext = filename.rsplit('.', 1)[1].lower()
+    try:
+        df = pd.read_excel(filepath) if ext == 'xlsx' else pd.read_csv(filepath)
+    except Exception as e:
+        flash(f"Error reading file: {e}")
+        return redirect(url_for('pre'))
+
+    categorical_columns = df.select_dtypes(include='object').columns.tolist()
     strategy_dict = {}
     for col in categorical_columns:
         strategy = request.form.get(f"encoding_strategy_{col}", "ignore")
@@ -350,55 +369,78 @@ def preprocess():
     # Clean up original file after preprocessing
     cleanup_specific_files([filename])
     
-    return render_template('result.html', table=preview_html, report=report,
-                           cleaned_filename=os.path.basename(cleaned_path),
-                           log_filename=os.path.basename(report_path),
-                           heatmap_image=url_for('static', filename='correlation_heatmap.png'))
+    heatmap_image = url_for('static', filename='correlation_heatmap.png') if heatmap_path else None
+    
+    return render_template('result.html', 
+                         table=preview_html, 
+                         report=report,
+                         cleaned_filename=os.path.basename(cleaned_path),
+                         log_filename=os.path.basename(report_path),
+                         heatmap_image=heatmap_image)
 
 @app.route('/download/<filename>')
 def download_file(filename):
     path = os.path.join(PROCESSED_FOLDER, filename)
-    return send_file(path, as_attachment=True)
+    if os.path.exists(path):
+        return send_file(path, as_attachment=True)
+    else:
+        flash("File not found.")
+        return redirect(url_for('pre'))
 
 # Upload dataset and return EDA + Correlation plot
 @app.route('/upload', methods=['POST'])
 def upload():
+    if 'dataset' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    
     file = request.files['dataset']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({"error": "Invalid file format. Please upload CSV or Excel files."}), 400
+
     uid = str(uuid.uuid4())
     filename = uid + "_" + file.filename
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     file.save(filepath)
 
-    df = pd.read_csv(filepath) if file.filename.endswith('.csv') else pd.read_excel(filepath)
-    data_cache[uid] = df
-    file_access_times[uid] = time.time()  # Track access time
+    try:
+        df = pd.read_csv(filepath) if file.filename.endswith('.csv') else pd.read_excel(filepath)
+        data_cache[uid] = df
+        file_access_times[uid] = time.time()
 
-    eda = generate_eda_summary(df)
-    corr_path = generate_correlation_plot(df, uid)
+        eda = generate_eda_summary(df)
+        corr_path = generate_correlation_plot(df, uid)
 
-    # Clean up old files after new upload
-    cleanup_old_files()
+        # Clean up old files after new upload
+        cleanup_old_files()
 
-    return jsonify({
-        "uid": uid,
-        "columns": list(df.columns),
-        "preview": eda["head"],
-        "eda": {
-            "shape": eda["shape"],
-            "dtypes": eda["dtypes"],
-            "missing": eda["missing_values"],
-            "describe": eda["describe"],
-            "tail": eda["tail"],
-            "corr_path": f"/{corr_path}" if corr_path else None
-        }
-    })
+        return jsonify({
+            "uid": uid,
+            "columns": list(df.columns),
+            "preview": eda["head"],
+            "eda": {
+                "shape": eda["shape"],
+                "dtypes": eda["dtypes"],
+                "missing": eda["missing_values"],
+                "describe": eda["describe"],
+                "tail": eda["tail"],
+                "corr_path": f"/static/plots/{os.path.basename(corr_path)}" if corr_path else None
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": f"Error processing file: {str(e)}"}), 500
 
 # Train selected model on uploaded dataset
 @app.route('/train', methods=['POST'])
 def train():
-    uid = request.form['uid']
-    target = request.form['target']
-    algorithm = request.form['algorithm']
+    uid = request.form.get('uid')
+    target = request.form.get('target')
+    algorithm = request.form.get('algorithm')
+
+    if not all([uid, target, algorithm]):
+        return jsonify({"error": "Missing required parameters"}), 400
 
     df = data_cache.get(uid)
     if df is None:
@@ -415,14 +457,10 @@ def train():
         # Clean up the uploaded file for this UID
         uploaded_files = [f for f in os.listdir(UPLOAD_FOLDER) if f.startswith(uid)]
         cleanup_specific_files(uploaded_files)
-        
-        # Optionally remove from cache after training
-        # data_cache.pop(uid, None)
-        # file_access_times.pop(uid, None)
 
         return jsonify({
             "accuracy": round(acc * 100, 2),
-            "confusion_matrix": url_for('serve_plot', filename=os.path.basename(cm_path))
+            "confusion_matrix": url_for('serve_plot', filename=os.path.basename(cm_path)) if cm_path else None
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -442,15 +480,12 @@ def upload_file():
         return redirect(request.url)
     
     if file and allowed_file(file.filename):
-        # Generate a unique filename to avoid overwriting issues
         original_filename = file.filename
         unique_filename = str(uuid.uuid4()) + "_" + original_filename
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
         file.save(filepath)
 
         try:
-            # Call the modularized function to get dashboard data
-            # Pass the original filename to display in the dashboard header
             dashboard_data = get_dashboard_data(filepath, original_filename)
             
             # Clean up the uploaded file after processing
@@ -461,17 +496,13 @@ def upload_file():
             
             return render_template('dsahresult.html', **dashboard_data)
         except ValueError as e:
-            # Handle specific ValueErrors from get_dashboard_data (e.g., unsupported file type)
             cleanup_specific_files([unique_filename])
             return render_template('dashboardind.html', error=str(e))
         except Exception as e:
-            # Catch any other unexpected errors during processing
             cleanup_specific_files([unique_filename])
             return render_template('dashboardind.html', error=f"An unexpected error occurred during file processing: {e}. Please check your file.")
     else:
         return render_template('index.html', error="Invalid file type. Please upload a CSV or XLSX file.")
-
-# ==================== SCHEDULED CLEANUP ROUTE ====================
 
 @app.route('/cleanup', methods=['GET'])
 def manual_cleanup():
@@ -491,14 +522,17 @@ def manual_cleanup():
             "message": str(e)
         }), 500
 
-# ==================== STARTUP CLEANUP ====================
-
-# Run cleanup on application startup
-print("Starting application...")
-cleanup_old_files()
+# ==================== APPLICATION STARTUP ====================
 
 if __name__ == '__main__':
+    print("Starting application...")
+    print(f"Current directory: {os.getcwd()}")
+    print(f"Template directory: {TEMPLATE_DIR}")
+    print(f"Static directory: {STATIC_DIR}")
+    
     # Initial cleanup
-    print("Performing initial cleanup...")
     cleanup_old_files()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    
+    # Get port from environment variable (for Render) or use default
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
