@@ -50,6 +50,7 @@ data_cache = {}
 file_access_times = {}  # Track when files were last accessed
 MAX_CACHE_AGE_HOURS = 1  # Clean up files older than 1 hour
 MAX_CACHE_SIZE = 10      # Maximum number of files to keep in cache
+first_request = False    # Flag to track first request
 
 # ==================== CLEANUP FUNCTIONS ====================
 
@@ -128,6 +129,16 @@ def cleanup_processed_files(filename_prefix=None):
                 print(f"Error removing {filename}: {e}")
 
 # ==================== MODIFIED ROUTES WITH CLEANUP ====================
+
+@app.before_request
+def before_request_handler():
+    """Run before each request to handle startup cleanup"""
+    global first_request
+    if not first_request:
+        # Perform startup cleanup on first request
+        print("Performing startup cleanup...")
+        cleanup_old_files()
+        first_request = True
 
 # Home Page Routes
 @app.route('/eda')
@@ -480,16 +491,14 @@ def manual_cleanup():
             "message": str(e)
         }), 500
 
-# ==================== INITIAL CLEANUP ====================
+# ==================== STARTUP CLEANUP ====================
 
-# Clean up on startup
-@app.before_first_request
-def startup_cleanup():
-    """Clean up old files when the app starts"""
-    print("Performing startup cleanup...")
-    cleanup_old_files()
+# Run cleanup on application startup
+print("Starting application...")
+cleanup_old_files()
 
 if __name__ == '__main__':
     # Initial cleanup
-    startup_cleanup()
+    print("Performing initial cleanup...")
+    cleanup_old_files()
     app.run(debug=True, host='0.0.0.0', port=5000)
