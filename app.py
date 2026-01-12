@@ -101,8 +101,8 @@ def safe_import():
                 return {
                     'head': df.head().to_html(classes='table table-striped', index=False),
                     'shape': f"{df.shape[0]} rows × {df.shape[1]} columns",
-                    'dtypes': df.dtypes.astype(str).to_frame('Data Type').to_html(classes='table table-striped'),
-                    'missing_values': df.isnull().sum().to_frame('Missing Values').to_html(classes='table table-striped'),
+                    # 'dtypes': df.dtypes.astype(str).to_frame('Data Type').to_html(classes='table table-striped'),
+                    # 'missing_values': df.isnull().sum().to_frame('Missing Values').to_html(classes='table table-striped'),
                     'describe': df.describe().to_html(classes='table table-striped'),
                     'tail': df.tail().to_html(classes='table table-striped', index=False)
                 }
@@ -732,3 +732,4 @@ if __name__ == '__main__':
         port=int(os.environ.get('PORT', 5000)),
         threaded=True
     )
+
