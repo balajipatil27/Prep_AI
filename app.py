@@ -489,27 +489,39 @@ def upload():
         eda_data = generate_eda_summary(df)
         
         # Generate correlation plot
-        corr_path = generate_correlation_plot(df, uid)
+        corr_filename = generate_correlation_plot(df, uid)
         
         # Clean up uploaded file
         if filepath.exists():
             filepath.unlink()
 
-        return jsonify({
+        # Prepare response
+        response = {
             "uid": uid,
             "columns": list(df.columns),
-            "preview": eda_data.get('head', ''),
+            "preview": eda_data.get('head', 'No preview available'),
             "eda": {
-                "shape": eda_data.get('shape', ''),
-                "dtypes": eda_data.get('dtypes', ''),
-                "missing": eda_data.get('missing_values', ''),
-                "describe": eda_data.get('describe', ''),
-                "tail": eda_data.get('tail', ''),
-                "corr_path": f"/static/plots/correlation_{uid}.png" if corr_path else None
+                "shape": eda_data.get('shape', 'Unknown shape'),
+                "dtypes": eda_data.get('dtypes', 'No data types available'),
+                "missing": eda_data.get('missing_values', 'No missing values info'),
+                "describe": eda_data.get('describe', 'No descriptive statistics'),
+                "tail": eda_data.get('tail', 'No tail available')
             }
-        })
+        }
+        
+        # Add correlation plot path if generated
+        if corr_filename:
+            response["eda"]["corr_path"] = url_for('static', filename=f'plots/{corr_filename}')
+        else:
+            response["eda"]["corr_path"] = None
+            
+        return jsonify(response)
+        
     except Exception as e:
-        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+        print(f"Error in upload route: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 @app.route('/train', methods=['POST'])
 def train():
@@ -732,4 +744,5 @@ if __name__ == '__main__':
         port=int(os.environ.get('PORT', 5000)),
         threaded=True
     )
+
 
