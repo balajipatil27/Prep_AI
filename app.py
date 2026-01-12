@@ -15,6 +15,9 @@ from nltk.tokenize import word_tokenize
 from dashboard import get_dashboard_data
 import io
 import base64
+import time
+from datetime import datetime, timedelta
+import shutil
 
 import matplotlib
 matplotlib.use('Agg')
@@ -44,34 +47,119 @@ os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 os.makedirs(STATIC_FOLDER, exist_ok=True)
 
 data_cache = {} 
+file_access_times = {}  # Track when files were last accessed
+MAX_CACHE_AGE_HOURS = 1  # Clean up files older than 1 hour
+MAX_CACHE_SIZE = 10      # Maximum number of files to keep in cache
 
+# ==================== CLEANUP FUNCTIONS ====================
+
+def cleanup_old_files():
+    """Remove old files from uploads, processed folders, and clear old cache entries"""
+    current_time = time.time()
+    cutoff_time = current_time - (MAX_CACHE_AGE_HOURS * 3600)
+    
+    # Clean up UPLOAD_FOLDER
+    for filename in os.listdir(UPLOAD_FOLDER):
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        if os.path.isfile(file_path):
+            file_age = current_time - os.path.getmtime(file_path)
+            if file_age > cutoff_time:
+                try:
+                    os.remove(file_path)
+                    print(f"Cleaned up old file: {filename}")
+                except Exception as e:
+                    print(f"Error removing {filename}: {e}")
+    
+    # Clean up PROCESSED_FOLDER (keep only files from current session)
+    for filename in os.listdir(PROCESSED_FOLDER):
+        file_path = os.path.join(PROCESSED_FOLDER, filename)
+        if os.path.isfile(file_path):
+            file_age = current_time - os.path.getmtime(file_path)
+            if file_age > cutoff_time:
+                try:
+                    os.remove(file_path)
+                    print(f"Cleaned up processed file: {filename}")
+                except Exception as e:
+                    print(f"Error removing {filename}: {e}")
+    
+    # Clean up data_cache
+    uids_to_remove = []
+    for uid in list(data_cache.keys()):
+        if uid in file_access_times:
+            if file_access_times[uid] < cutoff_time:
+                uids_to_remove.append(uid)
+    
+    for uid in uids_to_remove:
+        data_cache.pop(uid, None)
+        file_access_times.pop(uid, None)
+        print(f"Cleaned up cache for UID: {uid}")
+    
+    # Enforce max cache size
+    if len(data_cache) > MAX_CACHE_SIZE:
+        # Remove oldest entries
+        sorted_uids = sorted(file_access_times.items(), key=lambda x: x[1])
+        for uid, _ in sorted_uids[:len(data_cache) - MAX_CACHE_SIZE]:
+            data_cache.pop(uid, None)
+            file_access_times.pop(uid, None)
+            print(f"Removed from cache (size limit): {uid}")
+
+def cleanup_specific_files(file_list):
+    """Remove specific files from the uploads folder"""
+    for filename in file_list:
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                print(f"Cleaned up file: {filename}")
+            except Exception as e:
+                print(f"Error removing {filename}: {e}")
+
+def cleanup_processed_files(filename_prefix=None):
+    """Remove processed files, optionally filtered by prefix"""
+    for filename in os.listdir(PROCESSED_FOLDER):
+        if filename_prefix and not filename.startswith(filename_prefix):
+            continue
+        file_path = os.path.join(PROCESSED_FOLDER, filename)
+        if os.path.isfile(file_path):
+            try:
+                os.remove(file_path)
+                print(f"Cleaned up processed file: {filename}")
+            except Exception as e:
+                print(f"Error removing {filename}: {e}")
+
+# ==================== MODIFIED ROUTES WITH CLEANUP ====================
 
 # Home Page Routes
 @app.route('/eda')
 def eda():
+    # Run cleanup on less frequent pages
+    cleanup_old_files()
     return render_template('eda.html')
-
 
 @app.route('/')
 def index():
+    # Run cleanup on home page
+    cleanup_old_files()
     return render_template('index.html')
 
 @app.route('/pre')
 def pre():
+    # Clean up before showing preprocessing page
+    cleanup_old_files()
     return render_template('pre.html')
 
 @app.route('/aboutus')
 def aboutus():
+    cleanup_old_files()
     return render_template('about.html')
 
 @app.route('/dash')
 def dash():
+    cleanup_old_files()
     return render_template('dashboardind.html')
-
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 
 def generate_heatmap(df):
     corr = df.select_dtypes(include=[np.number]).corr()
@@ -199,8 +287,10 @@ def preprocess_dataset(filepath, filename, strategy_dict):
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(report))
 
-    return df.head().to_html(classes='table table-striped'), report, cleaned_path, report_path, heatmap_path
+    # Schedule cleanup of original uploaded file
+    cleanup_specific_files([filename])
 
+    return df.head().to_html(classes='table table-striped'), report, cleaned_path, report_path, heatmap_path
 
 @app.route('/upload_preprocess', methods=['POST'])
 def upload_preprocess():
@@ -227,7 +317,6 @@ def upload_preprocess():
     flash("Invalid file format.")
     return redirect(url_for('pre'))
 
-
 @app.route('/preprocess', methods=['POST'])
 def preprocess():
     filename = session.get('filename')
@@ -246,6 +335,10 @@ def preprocess():
         strategy_dict[col] = strategy
 
     preview_html, report, cleaned_path, report_path, heatmap_path = preprocess_dataset(filepath, filename, strategy_dict)
+    
+    # Clean up original file after preprocessing
+    cleanup_specific_files([filename])
+    
     return render_template('result.html', table=preview_html, report=report,
                            cleaned_filename=os.path.basename(cleaned_path),
                            log_filename=os.path.basename(report_path),
@@ -255,7 +348,6 @@ def preprocess():
 def download_file(filename):
     path = os.path.join(PROCESSED_FOLDER, filename)
     return send_file(path, as_attachment=True)
-
 
 # Upload dataset and return EDA + Correlation plot
 @app.route('/upload', methods=['POST'])
@@ -268,9 +360,13 @@ def upload():
 
     df = pd.read_csv(filepath) if file.filename.endswith('.csv') else pd.read_excel(filepath)
     data_cache[uid] = df
+    file_access_times[uid] = time.time()  # Track access time
 
     eda = generate_eda_summary(df)
     corr_path = generate_correlation_plot(df, uid)
+
+    # Clean up old files after new upload
+    cleanup_old_files()
 
     return jsonify({
         "uid": uid,
@@ -301,6 +397,17 @@ def train():
         X_train, X_test, y_train, y_test = preprocess_data(df, target)
         model, acc, y_pred = run_model(X_train, X_test, y_train, y_test, algorithm)
         cm_path = generate_confusion_matrix_plot(y_test, y_pred, uid)
+        
+        # Update access time
+        file_access_times[uid] = time.time()
+        
+        # Clean up the uploaded file for this UID
+        uploaded_files = [f for f in os.listdir(UPLOAD_FOLDER) if f.startswith(uid)]
+        cleanup_specific_files(uploaded_files)
+        
+        # Optionally remove from cache after training
+        # data_cache.pop(uid, None)
+        # file_access_times.pop(uid, None)
 
         return jsonify({
             "accuracy": round(acc * 100, 2),
@@ -308,7 +415,7 @@ def train():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
+
 # Serve static confusion matrix or correlation plots
 @app.route('/static/plots/<filename>')
 def serve_plot(filename):
@@ -334,20 +441,55 @@ def upload_file():
             # Call the modularized function to get dashboard data
             # Pass the original filename to display in the dashboard header
             dashboard_data = get_dashboard_data(filepath, original_filename)
+            
+            # Clean up the uploaded file after processing
+            cleanup_specific_files([unique_filename])
+            
+            # Clean up old files
+            cleanup_old_files()
+            
             return render_template('dsahresult.html', **dashboard_data)
         except ValueError as e:
             # Handle specific ValueErrors from get_dashboard_data (e.g., unsupported file type)
+            cleanup_specific_files([unique_filename])
             return render_template('dashboardind.html', error=str(e))
         except Exception as e:
             # Catch any other unexpected errors during processing
+            cleanup_specific_files([unique_filename])
             return render_template('dashboardind.html', error=f"An unexpected error occurred during file processing: {e}. Please check your file.")
-        finally:
-            # Clean up the uploaded file after processing
-            if os.path.exists(filepath):
-                os.remove(filepath)
     else:
         return render_template('index.html', error="Invalid file type. Please upload a CSV or XLSX file.")
 
+# ==================== SCHEDULED CLEANUP ROUTE ====================
+
+@app.route('/cleanup', methods=['GET'])
+def manual_cleanup():
+    """Manual cleanup endpoint (can be called via cron job or manually)"""
+    try:
+        cleanup_old_files()
+        return jsonify({
+            "status": "success",
+            "message": "Cleanup completed successfully",
+            "cache_size": len(data_cache),
+            "upload_files": len(os.listdir(UPLOAD_FOLDER)),
+            "processed_files": len(os.listdir(PROCESSED_FOLDER))
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+# ==================== INITIAL CLEANUP ====================
+
+# Clean up on startup
+@app.before_first_request
+def startup_cleanup():
+    """Clean up old files when the app starts"""
+    print("Performing startup cleanup...")
+    cleanup_old_files()
 
 if __name__ == '__main__':
+    # Initial cleanup
+    startup_cleanup()
     app.run(debug=True, host='0.0.0.0', port=5000)
