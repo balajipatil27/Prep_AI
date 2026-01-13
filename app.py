@@ -20,6 +20,10 @@ from nltk.tokenize import word_tokenize
 from dashboard import get_dashboard_data
 import io
 import base64
+import tempfile
+import shutil
+import time
+import threading
 
 import matplotlib
 matplotlib.use('Agg')
@@ -38,9 +42,6 @@ PLOT_FOLDER = 'static/plots'
 REPORT_FOLDER = 'static/reports'
 app.secret_key = 'your_secret_key'
 
-# app.config['UPLOAD_FOLDERR'] = 'uploads'
-# app.config['ALLOWED_EXTENSIONSS'] = {'csv', 'xlsx'}
-
 PROCESSED_FOLDER = 'processed'
 STATIC_FOLDER = 'static'
 ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
@@ -57,6 +58,58 @@ os.makedirs(STATIC_FOLDER, exist_ok=True)
 
 data_cache = {} 
 
+# Cleanup configuration
+CLEANUP_INTERVAL = 300  # Clean up every 5 minutes (300 seconds)
+MAX_FILE_AGE = 1800  # Remove files older than 30 minutes (1800 seconds)
+MAX_CACHE_AGE = 1800  # Remove cache entries older than 30 minutes
+
+# Track file creation times
+file_timestamps = {}
+cache_timestamps = {}
+
+def cleanup_old_files():
+    """Clean up old files from upload, processed, and plot folders"""
+    current_time = time.time()
+    folders_to_clean = [UPLOAD_FOLDER, PROCESSED_FOLDER, PLOT_FOLDER, REPORT_FOLDER]
+    
+    for folder in folders_to_clean:
+        if os.path.exists(folder):
+            for filename in os.listdir(folder):
+                filepath = os.path.join(folder, filename)
+                try:
+                    # Skip directories and special files
+                    if os.path.isfile(filepath):
+                        file_age = current_time - os.path.getmtime(filepath)
+                        if file_age > MAX_FILE_AGE:
+                            os.remove(filepath)
+                            print(f"Cleaned up old file: {filepath}")
+                except Exception as e:
+                    print(f"Error cleaning up file {filepath}: {e}")
+    
+    # Clean up data cache
+    global data_cache, cache_timestamps
+    uids_to_remove = []
+    for uid, timestamp in cache_timestamps.items():
+        if current_time - timestamp > MAX_CACHE_AGE:
+            uids_to_remove.append(uid)
+    
+    for uid in uids_to_remove:
+        data_cache.pop(uid, None)
+        cache_timestamps.pop(uid, None)
+        print(f"Cleaned up cache for UID: {uid}")
+
+def cleanup_scheduler():
+    """Run cleanup periodically"""
+    while True:
+        time.sleep(CLEANUP_INTERVAL)
+        try:
+            cleanup_old_files()
+        except Exception as e:
+            print(f"Error in cleanup scheduler: {e}")
+
+# Start cleanup thread
+cleanup_thread = threading.Thread(target=cleanup_scheduler, daemon=True)
+cleanup_thread.start()
 
 # Home Page
 @app.route('/eda')
@@ -83,11 +136,6 @@ def dash():
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-# def allowed_file(filename):
-#     return '.' in filename and \
-#            filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONSS']
 
 def generate_heatmap(df):
     corr = df.select_dtypes(include=[np.number]).corr()
@@ -210,13 +258,17 @@ def preprocess_dataset(filepath, filename, strategy_dict):
         df.to_excel(cleaned_path, index=False)
     else:
         df.to_csv(cleaned_path, index=False)
+    
+    # Track file creation time
+    file_timestamps[cleaned_path] = time.time()
 
     report_path = os.path.join(PROCESSED_FOLDER, 'preprocessing_log.txt')
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(report))
+    
+    file_timestamps[report_path] = time.time()
 
     return df.head().to_html(classes='table table-striped'), report, cleaned_path, report_path, heatmap_path
-
 
 @app.route('/upload_preprocess', methods=['POST'])
 def upload_preprocess():
@@ -242,7 +294,6 @@ def upload_preprocess():
 
     flash("Invalid file format.")
     return redirect(url_for('pre'))
-
 
 @app.route('/preprocess', methods=['POST'])
 def preprocess():
@@ -271,7 +322,6 @@ def preprocess():
 def download_file(filename):
     path = os.path.join(PROCESSED_FOLDER, filename)
     return send_file(path, as_attachment=True)
-
 
 # Upload dataset and return EDA + Correlation plot
 def suggest_algorithms(df, target_col):
@@ -323,6 +373,7 @@ def suggest_algorithms(df, target_col):
             try:
                 import xgboost  # noqa
                 algorithms.append({"value": "xgboost", "label": "XGBoost"})
+            except ImportError:
             except ImportError:
                 pass
             try:
@@ -376,6 +427,8 @@ def upload():
 
     try:
         file.save(filepath)
+        # Track file creation time
+        file_timestamps[filepath] = time.time()
     except Exception as e:
         return jsonify({"error": f"Failed to save file: {str(e)}"}), 500
 
@@ -385,14 +438,27 @@ def upload():
         else:
             df = pd.read_excel(filepath)
     except Exception as e:
+        # Clean up the file if reading fails
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            file_timestamps.pop(filepath, None)
         return jsonify({"error": f"Failed to read file: {str(e)}"}), 400
 
     data_cache[uid] = df
+    cache_timestamps[uid] = time.time()
 
     try:
         eda = generate_eda_summary(df)
         corr_path = generate_correlation_plot(df, uid)
+        if corr_path:
+            file_timestamps[corr_path] = time.time()
     except Exception as e:
+        # Clean up on error
+        data_cache.pop(uid, None)
+        cache_timestamps.pop(uid, None)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            file_timestamps.pop(filepath, None)
         return jsonify({"error": f"EDA generation failed: {str(e)}"}), 500
 
     return jsonify({
@@ -456,11 +522,15 @@ def train():
         model, acc, y_pred, feature_importances, roc_path = run_model(
             X_train, X_test, y_train, y_test, algorithm, max_depth=max_depth
         )
+        if roc_path:
+            file_timestamps[roc_path] = time.time()
     except Exception as e:
         return jsonify({"error": f"Model training failed: {str(e)}"}), 500
 
     try:
         cm_path = generate_confusion_matrix_plot(y_test, y_pred, uid)
+        if cm_path:
+            file_timestamps[cm_path] = time.time()
     except Exception:
         cm_path = None
 
@@ -468,12 +538,16 @@ def train():
     if feature_importances is not None:
         try:
             fi_plot_path = generate_feature_importance_plot(feature_importances, X_train.columns, uid)
+            if fi_plot_path:
+                file_timestamps[fi_plot_path] = time.time()
         except Exception:
             fi_plot_path = None
 
     shap_path = None
     try:
         shap_path = generate_shap_plot(model, X_train, uid)
+        if shap_path:
+            file_timestamps[shap_path] = time.time()
     except Exception:
         shap_path = None
 
@@ -490,7 +564,6 @@ def serve_plot(filename):
     return send_from_directory(PLOT_FOLDER, filename)
 
 #dashboard
-
 @app.route('/uploaddash', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -505,6 +578,7 @@ def upload_file():
         unique_filename = str(uuid.uuid4()) + "_" + original_filename
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
         file.save(filepath)
+        file_timestamps[filepath] = time.time()
 
         try:
             # Call the modularized function to get dashboard data
@@ -521,9 +595,20 @@ def upload_file():
             # Clean up the uploaded file after processing
             if os.path.exists(filepath):
                 os.remove(filepath)
+                file_timestamps.pop(filepath, None)
     else:
         return render_template('dashboard.html', error="Invalid file type. Please upload a CSV or XLSX file.")
 
+# Add a manual cleanup endpoint for testing
+@app.route('/cleanup', methods=['POST'])
+def manual_cleanup():
+    try:
+        cleanup_old_files()
+        return jsonify({"message": "Cleanup completed successfully"})
+    except Exception as e:
+        return jsonify({"error": f"Cleanup failed: {str(e)}"}), 500
 
 if __name__ == '__main__':
+    # Initial cleanup on startup
+    cleanup_old_files()
     app.run(debug=True, host='0.0.0.0', port=5000)
