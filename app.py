@@ -374,7 +374,6 @@ def suggest_algorithms(df, target_col):
                 import xgboost  # noqa
                 algorithms.append({"value": "xgboost", "label": "XGBoost"})
             except ImportError:
-            except ImportError:
                 pass
             try:
                 import lightgbm  # noqa
